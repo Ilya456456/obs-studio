@@ -2219,7 +2219,21 @@ void OBSBasic::CreateHotkeys()
 	};
 
 	auto LoadHotkeyPair = [&](obs_hotkey_pair_id id, const char *name0,
-				  const char *name1) {
+				  const char *name1,
+				  const char *oldName = NULL) {
+		if (oldName) {
+			const auto info = config_get_string(basicConfig,
+							    "Hotkeys", oldName);
+			if (info) {
+				config_set_string(basicConfig, "Hotkeys", name0,
+						  info);
+				config_set_string(basicConfig, "Hotkeys", name1,
+						  info);
+				config_remove_value(basicConfig, "Hotkeys",
+						    oldName);
+				config_save(basicConfig);
+			}
+		}
 		obs_data_array_t *array0 =
 			obs_data_get_array(LoadHotkeyData(name0), "bindings");
 		obs_data_array_t *array1 =
@@ -2332,6 +2346,23 @@ void OBSBasic::CreateHotkeys()
 	LoadHotkeyPair(togglePreviewHotkeys, "OBSBasic.EnablePreview",
 		       "OBSBasic.DisablePreview");
 
+	togglePreviewProgramHotkeys = obs_hotkey_pair_register_frontend(
+		"OBSBasic.EnablePreviewProgram",
+		Str("Basic.EnablePreviewProgramMode"),
+		"OBSBasic.DisablePreviewProgram",
+		Str("Basic.DisablePreviewProgramMode"),
+		MAKE_CALLBACK(!basic.IsPreviewProgramMode(),
+			      basic.EnablePreviewProgram,
+			      "Enabling preview program"),
+		MAKE_CALLBACK(basic.IsPreviewProgramMode(),
+			      basic.DisablePreviewProgram,
+			      "Disabling preview program"),
+		this, this);
+	LoadHotkeyPair(togglePreviewProgramHotkeys,
+		       "OBSBasic.EnablePreviewProgram",
+		       "OBSBasic.DisablePreviewProgram",
+		       "OBSBasic.TogglePreviewProgram");
+
 	contextBarHotkeys = obs_hotkey_pair_register_frontend(
 		"OBSBasic.ShowContextBar", Str("Basic.Main.ShowContextBar"),
 		"OBSBasic.HideContextBar", Str("Basic.Main.HideContextBar"),
@@ -2343,20 +2374,6 @@ void OBSBasic::CreateHotkeys()
 	LoadHotkeyPair(contextBarHotkeys, "OBSBasic.ShowContextBar",
 		       "OBSBasic.HideContextBar");
 #undef MAKE_CALLBACK
-
-	auto togglePreviewProgram = [](void *data, obs_hotkey_id,
-				       obs_hotkey_t *, bool pressed) {
-		if (pressed)
-			QMetaObject::invokeMethod(static_cast<OBSBasic *>(data),
-						  "on_modeSwitch_clicked",
-						  Qt::QueuedConnection);
-	};
-
-	togglePreviewProgramHotkey = obs_hotkey_register_frontend(
-		"OBSBasic.TogglePreviewProgram",
-		Str("Basic.TogglePreviewProgramMode"), togglePreviewProgram,
-		this);
-	LoadHotkey(togglePreviewProgramHotkey, "OBSBasic.TogglePreviewProgram");
 
 	auto transition = [](void *data, obs_hotkey_id, obs_hotkey_t *,
 			     bool pressed) {
@@ -2416,8 +2433,8 @@ void OBSBasic::ClearHotkeys()
 	obs_hotkey_pair_unregister(pauseHotkeys);
 	obs_hotkey_pair_unregister(replayBufHotkeys);
 	obs_hotkey_pair_unregister(togglePreviewHotkeys);
+	obs_hotkey_pair_unregister(togglePreviewProgramHotkeys);
 	obs_hotkey_unregister(forceStreamingStopHotkey);
-	obs_hotkey_unregister(togglePreviewProgramHotkey);
 	obs_hotkey_unregister(transitionHotkey);
 	obs_hotkey_unregister(statsHotkey);
 	obs_hotkey_unregister(screenshotHotkey);
@@ -6878,6 +6895,16 @@ void OBSBasic::DisablePreview()
 
 	previewEnabled = false;
 	EnablePreviewDisplay(false);
+}
+
+void OBSBasic::EnablePreviewProgram()
+{
+	SetPreviewProgramMode(true);
+}
+
+void OBSBasic::DisablePreviewProgram()
+{
+	SetPreviewProgramMode(false);
 }
 
 static bool nudge_callback(obs_scene_t *, obs_sceneitem_t *item, void *param)
